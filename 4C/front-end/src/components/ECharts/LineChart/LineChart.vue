@@ -1,11 +1,113 @@
+<template>
+  <!-- 图表区域：整个界面充满图表，绑定自定义点击事件 -->
+  <div ref="chartRef" class="chart" @contextmenu.prevent="openDialog"></div>
+
+  <!-- 配置弹窗 -->
+  <div v-if="dialogVisible" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>图表配置</h3>
+        <span class="close-btn" @click="closeDialog">×</span>
+      </div>
+
+      <div class="config-columns">
+        <!-- 左侧：全局设置 & 折线颜色设置 -->
+        <div class="config-left">
+          <div class="config-section">
+            <h4>全局设置</h4>
+            <div class="input-group">
+              <label>图表标题</label>
+              <input v-model="chartOptions.title.text" placeholder="请输入图表标题" />
+            </div>
+            <div class="input-group">
+              <label>标题颜色</label>
+              <div class="color-picker">
+                <input type="color" v-model="chartOptions.title.textStyle.color" />
+                <span class="color-preview" :style="{ backgroundColor: chartOptions.title.textStyle.color }"></span>
+              </div>
+            </div>
+            <div class="input-group">
+              <label>标题位置</label>
+              <select v-model="chartOptions.title.left">
+                <option value="left">左侧</option>
+                <option value="center">居中</option>
+                <option value="right">右侧</option>
+              </select>
+            </div>
+          </div>
+          <div class="config-section">
+            <h4>折线颜色设置</h4>
+            <div class="color-range">
+              <div class="color-item" v-for="(color, index) in chartOptions.seriesColors" :key="index">
+                <input type="color" v-model="chartOptions.seriesColors[index]" />
+                <span class="color-preview" :style="{ backgroundColor: color }"></span>
+                <button v-if="chartOptions.seriesColors.length > 1" @click="removeColor(index)" class="btn-remove">×</button>
+              </div>
+              <button @click="addColor" class="btn-add">+ 添加颜色</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧：坐标轴设置 -->
+        <div class="config-right">
+          <div class="config-section">
+            <h4>X轴设置</h4>
+            <div class="input-group">
+              <label>轴名称</label>
+              <input v-model="chartOptions.xAxis.name" placeholder="请输入X轴名称" />
+            </div>
+            <div class="input-group">
+              <label>文字颜色</label>
+              <div class="color-picker">
+                <input type="color" v-model="chartOptions.xAxis.axisLabel.color" />
+                <span class="color-preview" :style="{ backgroundColor: chartOptions.xAxis.axisLabel.color }"></span>
+              </div>
+            </div>
+            <div class="input-group">
+              <label>轴线颜色</label>
+              <div class="color-picker">
+                <input type="color" v-model="chartOptions.xAxis.axisLine.lineStyle.color" />
+                <span class="color-preview" :style="{ backgroundColor: chartOptions.xAxis.axisLine.lineStyle.color }"></span>
+              </div>
+            </div>
+          </div>
+          <div class="config-section">
+            <h4>Y轴设置</h4>
+            <div class="input-group">
+              <label>轴名称</label>
+              <input v-model="chartOptions.yAxis.name" placeholder="请输入Y轴名称" />
+            </div>
+            <div class="input-group">
+              <label>文字颜色</label>
+              <div class="color-picker">
+                <input type="color" v-model="chartOptions.yAxis.axisLabel.color" />
+                <span class="color-preview" :style="{ backgroundColor: chartOptions.yAxis.axisLabel.color }"></span>
+              </div>
+            </div>
+            <div class="input-group">
+              <label>轴线颜色</label>
+              <div class="color-picker">
+                <input type="color" v-model="chartOptions.yAxis.axisLine.lineStyle.color" />
+                <span class="color-preview" :style="{ backgroundColor: chartOptions.yAxis.axisLine.lineStyle.color }"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button @click="closeDialog">确定</button>
+    </div>
+  </div>
+</template>
+
 <script setup>
-import { ref, onMounted, watch, onBeforeUnmount, defineProps } from 'vue';
+import { ref, reactive, onMounted, watch, onBeforeUnmount, defineProps } from 'vue';
 import * as echarts from 'echarts';
 
-const chartRef = ref(null); // 图表容器引用
+const chartRef = ref(null);
 let myChart = null;
+const dialogVisible = ref(false);
 
-// 使用 defineProps 获取传入的属性
 const props = defineProps({
   rawData: {
     type: Array,
@@ -13,108 +115,342 @@ const props = defineProps({
   }
 });
 
-const updateChart = (rawData) => {
-  console.log("更新图表的数据:", rawData);
+// 定义配置对象（全局设置、坐标轴、折线颜色）
+const chartOptions = reactive({
+  title: {
+    text: '图表标题',
+    textStyle: { color: '#333', fontSize: 18 },
+    left: 'left'
+  },
+  xAxis: {
+    name: 'X轴',
+    type: 'category',
+    axisLabel: { color: '#374151' },
+    axisLine: { lineStyle: { color: '#666' } },
+    data: []
+  },
+  yAxis: {
+    name: 'Y轴',
+    type: 'value',
+    axisLabel: { color: '#374151' },
+    axisLine: { lineStyle: { color: '#666' } }
+  },
+  // 折线颜色配置（用于更新折线图的 lineStyle.color 和 symbol 颜色）
+  seriesColors: [
+    '#5470c6'
+  ]
+});
 
-  // 确保 rawData 格式正确
-  if (!rawData || !Array.isArray(rawData) || rawData.length === 0) {
-    console.error("传入的 rawData 格式有问题或为空");
-    return;
-  }
-
-  let formattedData = [];
-
-  // 如果数据是单一数据集的格式
-  if (rawData[0].hasOwnProperty('date') && rawData[0].hasOwnProperty('value')) {
-    // 将数据转化为符合多个数据集格式的结构
-    formattedData = [
-      {
-        NAME: '单一数据集',
-        data: rawData
-      }
-    ];
-  } else {
-    // 如果数据是多个数据集的格式，直接使用
-    formattedData = rawData;
-  }
-
-  // 获取所有日期的并集，确保 x 轴是统一的
-  const allDates = [...new Set(formattedData.flatMap(item => item.data.map(d => d.date)))];
-  console.log("所有日期:", allDates);
-
-  // 生成每个产品的折线数据
-  const seriesData = formattedData.map(dataset => {
-    const data = allDates.map(date => {
-      const idx = dataset.data.findIndex(item => item.date === date);
-      return idx !== -1 ? dataset.data[idx].value : null;
-    });
-
-    return {
-      name: dataset.NAME,  // 使用 NAME 作为每个系列的名称
-      type: 'line',
-      smooth: true,
-      data,
-      label: {
-        show: true,
-        position: 'top'
-      }
-    };
-  });
-
-  console.log("折线数据:", seriesData);
-
-  // 配置 ECharts 图表的选项
-  const option = {
-    title: {
-      text: '产品折线图'
-    },
-    tooltip: {
-      trigger: 'axis'
-    },
-    legend: {
-      data: formattedData.map(item => item.NAME)  // 使用 NAME 来生成图例
-    },
-    xAxis: {
-      type: 'category',
-      data: allDates,  // 使用所有日期作为 x 轴数据
-    },
-    yAxis: {
-      type: 'value'
-    },
-    series: seriesData  // 将折线图数据传入
-  };
-
-  // 确保 myChart 不为 null 再调用 setOption
-  if (myChart) {
-    myChart.setOption(option);
-  } else {
-    console.error("myChart is not initialized");
+// 折线颜色操作：添加、删除
+const addColor = () => {
+  chartOptions.seriesColors.push('#000000');
+};
+const removeColor = (index) => {
+  if (chartOptions.seriesColors.length > 1) {
+    chartOptions.seriesColors.splice(index, 1);
   }
 };
 
+// 右键打开弹窗
+const openDialog = () => {
+  dialogVisible.value = true
+}
+
+const closeDialog = () => {
+  dialogVisible.value = false
+  updateChart()
+}
+// 更新图表配置函数，根据 rawData 与配置对象构建 ECharts 配置
+const updateChart = (rawData) => {
+  if (!rawData || !Array.isArray(rawData) || rawData.length === 0) {
+    console.error("Invalid rawData");
+    return;
+  }
+
+  // 若 rawData 格式为单一数据（含 date 字段），则转换格式
+  const formattedData = rawData[0].date ? [{ NAME: '数据', data: rawData }] : rawData;
+  // 提取所有唯一日期
+  const allDates = [...new Set(formattedData.flatMap(dataset => dataset.data.map(d => d.date)))];
+  // 构建各系列数据，使用配置中的 seriesColors 为折线颜色
+  const seriesData = formattedData.map((dataset, index) => ({
+    name: dataset.NAME,
+    type: 'line',
+    smooth: true,
+    symbol: 'circle',
+    symbolSize: 8,
+    lineStyle: {
+      width: 3,
+      // 将折线图颜色设置为配置中的颜色
+      color: chartOptions.seriesColors[index % chartOptions.seriesColors.length],
+      shadowColor: 'rgba(0,0,0,0.2)',
+      shadowBlur: 10,
+      shadowOffsetY: 8
+    },
+    // 设置 symbol（数据点）的颜色与折线保持一致
+    itemStyle: {
+      color: chartOptions.seriesColors[index % chartOptions.seriesColors.length]
+    },
+    data: allDates.map(date => {
+      const found = dataset.data.find(item => item.date === date);
+      return found ? found.value : null;
+    })
+  }));
+
+  const option = {
+    title: chartOptions.title,
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(50,50,50,0.9)',
+      borderWidth: 0,
+      padding: [10, 15],
+      textStyle: { color: '#fff', fontSize: 14 },
+      axisPointer: {
+        type: 'cross',
+        label: { backgroundColor: '#6a7985' }
+      },
+      formatter: (params) => {
+        let res = `<div style="margin-bottom:5px">${params[0].axisValue}</div>`;
+        params.forEach(item => {
+          res += `<div style="display:flex;align-items:center;margin:5px 0">
+                    <span style="display:inline-block;width:10px;height:10px;background:${item.color};border-radius:50%;margin-right:8px"></span>
+                    ${item.seriesName}: ${item.value ?? '无数据'}
+                  </div>`;
+        });
+        return res;
+      }
+    },
+    legend: {
+      type: 'scroll',
+      top: 0,
+      icon: 'roundRect',
+      itemWidth: 16,
+      itemHeight: 8,
+      textStyle: {
+        rich: { name: { verticalAlign: 'right' } }
+      }
+    },
+    grid: {
+      top: 40,
+      left: 10,
+      right: 20,
+      bottom: 30,
+      containLabel: true
+    },
+    xAxis: {
+      ...chartOptions.xAxis,
+      data: allDates
+    },
+    yAxis: chartOptions.yAxis,
+    animation: true,
+    animationDuration: 2000,
+    animationEasing: 'cubicInOut',
+    series: seriesData
+  };
+
+  // 延时更新，确保图表平滑刷新
+  setTimeout(() => {
+    if (myChart) {
+      myChart.setOption(option, true);
+    }
+  }, 10);
+};
+
+
+let resizeHandler = null;
 onMounted(() => {
-  // 确保 chartRef 已绑定到 DOM 元素
   if (chartRef.value) {
-    myChart = echarts.init(chartRef.value);
-    updateChart(props.rawData); // 初始化时设置图表
-  } else {
-    console.error("chartRef is not properly bound to the DOM element");
+    myChart = echarts.init(chartRef.value, 'light', { renderer: 'canvas' });
+    updateChart(props.rawData);
+    resizeHandler = () => myChart.resize();
+    window.addEventListener('resize', resizeHandler);
   }
 });
 
-// 监听 rawData 的变化并更新图表
-watch(() => props.rawData, (newData) => {
-  updateChart(newData); // 数据变化时更新图表
+watch(() => props.rawData, (newVal) => {
+  updateChart(newVal);
 });
 
-// 在组件销毁前销毁图表实例
 onBeforeUnmount(() => {
   if (myChart) {
+    window.removeEventListener('resize', resizeHandler);
     myChart.dispose();
   }
 });
 </script>
 
-<template>
-  <div ref="chartRef" style="width: 100%; height: 400px;"></div>
-</template>
+<style scoped>
+.chart {
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background-color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  padding: 30px;
+  width: 600px;
+  max-width: 90%;
+  animation: fadeInScale 0.3s ease-in-out;
+}
+
+/* 弹窗头部 */
+.modal-header {
+  position: relative;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+/* 关闭按钮：绝对定位在右上角 */
+.close-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+}
+.config-columns {
+  display: flex;
+  gap: 30px;
+  margin: 20px 0;
+}
+
+.config-left,
+.config-right {
+  flex: 1;
+}
+
+.config-section {
+  margin-bottom: 24px;
+}
+
+.config-section h4 {
+  margin-bottom: 16px;
+  color: #2c3e50;
+  font-size: 16px;
+}
+
+.input-group {
+  margin-bottom: 16px;
+}
+
+.input-group label {
+  display: block;
+  margin-bottom: 6px;
+  color: #4a5568;
+  font-size: 14px;
+}
+
+.input-group input,
+.input-group select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.color-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.color-preview {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+}
+
+.color-range {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.color-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-add,
+.btn-remove {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-add {
+  background: #f0f4f8;
+  color: #4a5568;
+}
+
+.btn-remove {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.modal-footer {
+  text-align: right;
+  margin-top: 20px;
+}
+
+.btn-save {
+  background: #3b82f6;
+  color: white;
+  padding: 10px 24px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.btn-save:hover {
+  background: #2563eb;
+}
+
+@keyframes fadeInScale {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+button {
+  background-color: #5470c6;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 10px;
+  width: 100%;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  margin-top: 20px;
+}
+
+button:hover {
+  background-color: #3d5a9a;
+}
+</style>

@@ -1,120 +1,466 @@
 <template>
-  <div class="chart-container">
-    <div ref="chart" style="width: 100%; height: 400px;"></div>
+  <div ref="chart" class="chart" @contextmenu.prevent="openDialog"></div>
+  <!-- 配置弹窗 -->
+  <div v-if="dialogVisible" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>配置柱状图属性</h3>
+        <span class="close-btn" @click="closeDialog">×</span>
+      </div>
+      <div class="config-columns">
+        <!-- 左侧配置列 -->
+        <div class="config-left">
+          <div class="input-group">
+            <label for="chartTitle">图表标题：</label>
+            <input id="chartTitle" v-model="chartTitle" placeholder="请输入图表标题" />
+          </div>
+          <div class="input-group">
+            <label for="titlePosition">标题位置：</label>
+            <select id="titlePosition" v-model="titlePosition">
+              <option value="left">左侧</option>
+              <option value="center">中间</option>
+              <option value="right">右侧</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label for="titleColor">标题颜色：</label>
+            <div class="color-input">
+              <input id="titleColor" v-model="titleColor" type="color" />
+              <span class="color-preview" :style="{ backgroundColor: titleColor }"></span>
+            </div>
+          </div>
+          <div class="input-group">
+            <label for="barColor">柱状图颜色：</label>
+            <div class="color-input">
+              <input id="barColor" v-model="barColor" type="color" />
+              <span class="color-preview" :style="{ backgroundColor: barColor }"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧坐标轴配置列 -->
+        <div class="config-right">
+          <div class="axis-group">
+            <h4>X轴配置</h4>
+            <div class="input-group">
+              <label for="xAxis">名称：</label>
+              <input id="xAxis" v-model="xAxisName" placeholder="X轴名称" />
+            </div>
+            <div class="input-group">
+              <label for="xAxisLineColor">轴线颜色：</label>
+              <div class="color-input">
+                <input id="xAxisLineColor" v-model="xAxisLineColor" type="color" />
+                <span class="color-preview" :style="{ backgroundColor: xAxisLineColor }"></span>
+              </div>
+            </div>
+            <div class="input-group">
+              <label for="xAxisLabelColor">标签颜色：</label>
+              <div class="color-input">
+                <input id="xAxisLabelColor" v-model="xAxisLabelColor" type="color" />
+                <span class="color-preview" :style="{ backgroundColor: xAxisLabelColor }"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="axis-group">
+            <h4>Y轴配置</h4>
+            <div class="input-group">
+              <label for="yAxis">名称：</label>
+              <input id="yAxis" v-model="yAxisName" placeholder="Y轴名称" />
+            </div>
+            <div class="input-group">
+              <label for="yAxisLineColor">轴线颜色：</label>
+              <div class="color-input">
+                <input id="yAxisLineColor" v-model="yAxisLineColor" type="color" />
+                <span class="color-preview" :style="{ backgroundColor: yAxisLineColor }"></span>
+              </div>
+            </div>
+            <div class="input-group">
+              <label for="yAxisLabelColor">标签颜色：</label>
+              <div class="color-input">
+                <input id="yAxisLabelColor" v-model="yAxisLabelColor" type="color" />
+                <span class="color-preview" :style="{ backgroundColor: yAxisLabelColor }"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button @click="closeDialog">确定</button>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { onMounted, ref, watch, defineProps } from 'vue';
 import * as echarts from 'echarts';
+import { userUserStore } from '@/stores/UserStore.js';
 
 const chart = ref(null);
+const chartInstance = ref(null);
+const dialogVisible = ref(false);
+
+// 配置项：图表标题及轴相关的配置
+const chartTitle = ref('');
+const titlePosition = ref('center'); // 可选 left、center、right
+const titleColor = ref('#333333');
+const xAxisName = ref('');
+const yAxisName = ref('');
+const xAxisLineColor = ref('#bdc3c7');
+const yAxisLineColor = ref('#bdc3c7');
+const xAxisLabelColor = ref('#2c3e50');
+const yAxisLabelColor = ref('#7f8c8d');
+const barColor = ref('#3498db');
+
+const userStore = userUserStore();
 
 const props = defineProps({
   rawData: {
     type: Array,
     required: true,
+    default: () => []
   },
 });
 
+// 右键打开弹窗
+const openDialog = () => {
+  dialogVisible.value = true
+}
+
+const closeDialog = () => {
+  dialogVisible.value = false
+  updateChart()
+}
+
+console.log('收到的数据:', props.rawData);
+
+// 图表初始化
 onMounted(() => {
-  // 确保 rawData 不为空且有数据
-  if (!props.rawData || props.rawData.length === 0) {
-    console.error('rawData 数据为空');
-    return;
+  chartInstance.value = echarts.init(chart.value);
+  updateChart();
+});
+
+// 更新图表配置
+const updateChart = () => {
+  if (!props.rawData?.length) return;
+
+  let categories = [];
+  let series = [];
+
+  // 单数据集情况：判断第一条数据是否具有 name 属性
+  if (props.rawData[0]?.name) {
+    categories = props.rawData.map(item => item.name);
+    series = [{
+      name: '数据集1',
+      type: 'bar',
+      data: props.rawData.map(item => item.value),
+      itemStyle: {
+        color: barColor.value,
+        shadowBlur: 10,
+        shadowColor: 'rgba(52, 152, 219, 0.5)',
+        shadowOffsetX: 3,
+        shadowOffsetY: 3,
+        borderRadius: [12, 12, 0, 0],
+      },
+      label: {
+        show: true,
+        position: 'top',
+        fontSize: 14,
+        color: '#333',
+        fontWeight: 'bold',
+      },
+      barBorderRadius: [10, 10, 0, 0],
+    }];
+  } else { // 多数据集情况
+    categories = [...new Set(props.rawData.flatMap(d => d.data.map(i => i.name)))];
+    series = props.rawData.map((d, index) => {
+      const values = categories.map(cat => {
+        const item = d.data.find(i => i.name === cat);
+        return item ? item.value : 0;
+      });
+      return {
+        name: d.NAME,
+        type: 'bar',
+        data: values,
+        itemStyle: {
+          color: barColor.value,
+          shadowBlur: 10,
+          shadowColor: 'rgba(52, 152, 219, 0.5)',
+          shadowOffsetX: 3,
+          shadowOffsetY: 3,
+          borderRadius: [12, 12, 0, 0],
+        },
+        label: {
+          show: true,
+          position: 'top',
+          fontSize: 14,
+          color: '#333',
+          fontWeight: 'bold',
+        },
+        barBorderRadius: [10, 10, 0, 0],
+      };
+    });
   }
 
-  const chartInstance = echarts.init(chart.value);
-
-  // 定义颜色数组，用于不同数据集
-  const colorList = ['#2f89fc', '#ff7f50', '#8e44ad', '#e74c3c', '#2ecc71', '#f39c12'];
-
-  // 监听 rawData 更新，重新绘制图表
-  watch(
-    () => props.rawData,
-    (newData) => {
-      if (!newData || newData.length === 0) {
-        console.error('传入的数据为空');
-        return;
-      }
-
-      let categories = [];
-      let series = [];
-
-      // 判断数据格式并准备柱状图
-      if (newData[0].hasOwnProperty('name') && newData[0].hasOwnProperty('value')) {
-        // 如果是单一数据集格式
-        categories = newData.map(item => item.name); // 使用 name 作为 x 轴的类别
-        series = [
-          {
-            name: '数据集1',
-            type: 'bar',
-            data: newData.map(item => item.value),
-            itemStyle: {
-              color: colorList[0], // 使用颜色数组中的第一个颜色
-            },
-            label: {
-              show: true,
-              position: 'top',
-            },
-          },
-        ];
-      } else {
-        // 如果是多个数据集格式，处理每个数据集
-        categories = newData[0].data.map(item => item.name); // 假设所有数据集的 categories 相同
-
-        // 为每个数据集创建 series 数据
-        series = newData.map((dataset, index) => {
-          const values = dataset.data.map(item => item.value);
-          return {
-            name: dataset.NAME, // 使用 NAME 作为每个数据集的名称
-            type: 'bar',
-            data: values,
-            itemStyle: {
-              color: colorList[index % colorList.length], // 根据索引使用颜色数组中的颜色
-            },
-            label: {
-              show: true,
-              position: 'top',
-            },
-          };
-        });
-      }
-
-      // 配置图表选项
-      const option = {
-        title: {
-          text: '柱状图展示',
-        },
-        tooltip: {
-          trigger: 'axis',
-        },
-        legend: {
-          data: newData[0].hasOwnProperty('NAME')
-            ? newData.map(dataset => dataset.NAME) // 使用每个数据集的 NAME 作为图例
-            : ['数据集1'], // 如果只有一个数据集
-        },
-        xAxis: {
-          type: 'category',
-          data: categories, // x轴数据来自所有数据集的类别（name）
-        },
-        yAxis: {
-          type: 'value',
-        },
-        series, // 根据数据格式生成不同的 series
-      };
-
-      // 清除并重新设置图表
-      chartInstance.setOption(option);
+  // ECharts 配置项：增加标题设置，使用弹窗中设置的各项配置
+  const option = {
+    title: {
+      text: chartTitle.value,
+      left: titlePosition.value,
+      textStyle: {
+        color: titleColor.value,
+        fontSize: 18,
+        fontWeight: 'bold',
+      },
     },
-    { immediate: true } // 确保初始时也能执行
-  );
-});
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(52,152,219,0.9)',
+      textStyle: { color: '#fff', fontSize: 14 },
+      borderWidth: 0,
+      borderRadius: 6
+    },
+    grid: {
+      top: 80,
+      left: 10,
+      right: 10,
+      bottom: 30,
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      name: xAxisName.value,
+      nameLocation: 'center',
+      nameGap: 30,
+      nameTextStyle: {
+        fontWeight: 'bold',
+        fontSize: 14,
+        color: xAxisLabelColor.value,
+      },
+      data: categories,
+      axisLine: {
+        lineStyle: {
+          color: xAxisLineColor.value,
+          width: 2,
+        },
+      },
+    },
+    yAxis: {
+      type: 'value',
+      name: yAxisName.value,
+      nameLocation: 'end',
+      nameTextStyle: {
+        fontWeight: 'bold',
+        fontSize: 14,
+        color: yAxisLabelColor.value,
+      },
+      axisLabel: {
+        color: yAxisLabelColor.value,
+        fontSize: 12,
+      },
+      axisLine: {
+        lineStyle: {
+          color: yAxisLineColor.value,
+          width: 2,
+        },
+      },
+      splitLine: {
+        lineStyle: {
+          color: '#ecf0f1',
+        }
+      },
+    },
+    series,
+  };
+
+  chartInstance.value.setOption(option);
+};
+
+watch(
+  () => props.rawData,
+  () => {
+    if (chartInstance.value) {
+      updateChart();
+    }
+  },
+  { deep: true }
+);
 </script>
 
 <style scoped>
-.chart-container {
+/* 关闭按钮：绝对定位在右上角 */
+.close-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+}
+/* 弹窗头部 */
+.modal-header {
+  position: relative;
+  margin-bottom: 20px;
+  text-align: center;
+}
+/* 新增样式 */
+.config-columns {
+  display: flex;
+  gap: 30px;
+  margin: 20px 0;
+}
+
+.config-left,
+.config-right {
+  flex: 1;
+}
+
+.axis-group {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.axis-group h4 {
+  margin: 0 0 15px 0;
+  color: #2c3e50;
+  font-size: 16px;
+}
+
+.color-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.color-preview {
+  width: 24px;
+  height: 24px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+/* 调整原有样式 */
+.modal {
+  width: 600px; /* 增大弹窗宽度 */
+  padding: 25px;
+}
+
+button {
+  margin-top: 20px;
+  width: auto;
+  padding: 10px 30px;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.input-group {
+  margin-bottom: 15px;
+}
+
+.input-group label {
+  min-width: 80px;
+  margin-bottom: 8px;
+}
+html, body, #app {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+.chart {
   width: 100%;
-  height: 400px;
+  height: 100%;
+  cursor: pointer;
+}
+/* 弹窗遮罩 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+/* 放大弹窗 */
+.modal {
+  background-color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 6px 30px rgba(0, 0, 0, 0.2);
+  padding: 30px;
+  width: 500px;
+  max-width: 90%;
+  animation: fadeInScale 0.3s ease-in-out;
+}
+@keyframes fadeInScale {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.modal h3 {
+  margin-top: 0;
+  text-align: center;
+  color: #333;
+  font-weight: 600;
+}
+.input-group {
+  margin-bottom: 15px;
+  display: flex;
+  flex-direction: column;
+}
+.input-group label {
+  font-weight: bold;
+  margin-bottom: 5px;
+  color: #555;
+}
+.input-group input,
+.input-group select {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.3s;
+}
+.input-group input:focus,
+.input-group select:focus {
+  border-color: #66afe9;
+}
+/* 显示颜色预览框 */
+.color-preview {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  border: 1px solid #ccc;
+  margin-left: 10px;
+  vertical-align: middle;
+  text-align: center;
+  line-height: 24px;
+  font-size: 12px;
+  color: #fff;
+}
+button {
+  background-color: #5470c6;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 10px;
+  width: 100%;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+button:hover {
+  background-color: #3d5a9a;
 }
 </style>

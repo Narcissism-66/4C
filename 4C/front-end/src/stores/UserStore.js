@@ -6,6 +6,8 @@ export const userUserStore=defineStore('user',{
   //定义存储的变量
   state:()=>({
     user:null,
+    learn:'',
+    showGuide:false
   }),
   actions:{//写函数
     login(user)
